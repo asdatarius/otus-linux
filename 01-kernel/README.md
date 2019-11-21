@@ -2,7 +2,7 @@
 Use "stable" kernel.
 
 Latest vbox guest additions were used, keep it in mind (6.0.14). 
-If you want to use latest kernel, have to modify script 1 with hardcoded urls.
+Have to modify [stage-1-kernel-update.sh](packer/scripts/stage-1-kernel-update.sh) hardcoded urls, if you want the latest kernel.
 
 # Instructions used
-Additional step by step guide can be found at [the manual](https://github.com/asdatarius/manual_kernel_update/manual/manual.rd).
+Additional step by step guide can be found at [the manual](manual/manual.md).
