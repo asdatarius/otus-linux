@@ -254,7 +254,7 @@ PidFile /var/run/httpd-second.pid
 
 - Final test
 
-````bash
+````
 systemctl start httpd@first
 systemctl status httpd@first
 ● httpd@first.service - The Apache HTTP Server with custom configs
