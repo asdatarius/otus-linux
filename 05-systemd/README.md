@@ -12,7 +12,7 @@ WORD="ALERT"
 LOG_FILE="/var/log/asdatarius-watchlog.log"
 ````
 
-- Create logfile `/var/log/watchlog.log`
+- Create logfile `/var/log/asdatarius-watchlog.log`
 
 ````
 Some shitty log with AL3rTZ.
@@ -21,7 +21,7 @@ Disaster.
 alert!
 ````
 
-- Create monitoring script /opt/asdatarius-watchlog.sh (chmod u+x)
+- Create monitoring script `/opt/asdatarius-watchlog.sh` (chmod u+x) with basic validation
 
 ````bash
 #!/bin/bash
@@ -47,7 +47,7 @@ if [ -f "$LOG_FILE" ]; then
         exit 0
     fi
 else
-    echo "The file '$LOG_FILE' does not exist, use full path plz."
+    echo "The file '$LOG_FILE' does not exist."
     usage
 fi
 ````
@@ -84,7 +84,7 @@ Requires=asdatarius-watch.service
 [Timer]
 # Run every 30 second
 OnUnitActiveSec=30s
-# Default delay - up to 1m
+# Default accuracy - up to 1m
 AccuracySec=1s
 # Could be omitted if unit with same name (except suffix).
 #Unit=asdatarius-watch.service
@@ -152,7 +152,7 @@ WantedBy=multi-user.target
 ````
 
 - Final test
-````
+````bash
 systemctl start spawn-fcgi
 systemctl status spawn-fcgi
 ● spawn-fcgi.service - Spawn-fcgi startup service
@@ -200,13 +200,13 @@ Prepare unit for multiconfig httpd setup.
 
 - Copy base unit
 
-````
+````bash
 cp /usr/lib/systemd/system/httpd.service /etc/systemd/system/httpd@.service
 ````
 
 - Prepare unit file (add tpl var)
 
-````
+````bash
 [Unit]
 Description=The Apache HTTP Server
 After=network.target remote-fs.target nss-lookup.target
@@ -229,7 +229,7 @@ WantedBy=multi-user.target
 
 - Add settings files for 2 example instances `/etc/sysconfig/httpd-first` and `/etc/sysconfig/httpd-second` (custom configs with different ports/pids)
 
-````
+````bash
 # /etc/sysconfig/httpd-first
 OPTIONS=-f conf/first.conf
 
@@ -238,7 +238,7 @@ OPTIONS=-f conf/second.conf
 ````
 
 - Config could be copied from original `/etc/httpd/conf/httpd.conf`, important part - pid and port:
-````
+````bash
 # /etc/httpd/conf/httpd-first.conf
 ...
 Listen 8081
@@ -254,7 +254,7 @@ PidFile /var/run/httpd-second.pid
 
 - Final test
 
-````
+````bash
 systemctl start httpd@first
 systemctl status httpd@first
 ● httpd@first.service - The Apache HTTP Server with custom configs
