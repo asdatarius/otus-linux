@@ -40,7 +40,7 @@ if [ -f "$LOG_FILE" ]; then
         echo "Can't search for an empty substring."
 	usage
     else
-        if grep $WORD $LOG_FILE &> /dev/null
+        if grep -i $WORD $LOG_FILE &> /dev/null
 	then
             logger "$DATE: bingo bongo!"
         fi
