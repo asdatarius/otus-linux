@@ -35,8 +35,7 @@ function usage {
 }
 
 if [ -f "$LOG_FILE" ]; then
-    if [ -z "$WORD" ]
-    then
+    if [ -z "$WORD" ]; then
         echo "Can't search for an empty substring."
 	usage
     else
