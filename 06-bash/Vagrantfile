@@ -68,6 +68,11 @@ Vagrant.configure("2") do |config|
       end
       box.vm.provision "shell", inline: <<-SHELL
         yum install mailx -y
+        ln -s /vagrant/asdatarius-log-alert.service /etc/systemd/system/asdatarius-log-alert.service
+        ln -s /vagrant/asdatarius-log-alert.timer /etc/systemd/system/asdatarius-log-alert.timer
+        systemctl daemon-reload
+        #systemctl enable asdatarius-log-alert.service
+        systemctl start asdatarius-log-alert.timer
       SHELL
     end
   end
