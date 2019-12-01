@@ -1,0 +1,13 @@
+[Unit]
+Description="Run watchlog script every 30 second"
+# Without it timer won't start by himself and waits for manual service run
+Requires=asdatarius-log-alert.service
+
+[Timer]
+# Run every 30 second
+OnUnitActiveSec=5s
+# Default accuracy - up to 1m
+AccuracySec=1s
+
+[Install]
+WantedBy=multi-user.target

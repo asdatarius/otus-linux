@@ -1,0 +1,5 @@
+# Configuration file for my log-alert service
+# Place it to /etc/sysconfig
+
+# File and word in that file that we will be monit
+PATH_TO_LOGFILE=/vagrant/access-4560-644067.log

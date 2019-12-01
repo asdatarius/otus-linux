@@ -1,0 +1,7 @@
+[Unit]
+Description="asdatarius log-alert service"
+
+[Service]
+Type=oneshot
+EnvironmentFile=/vagrant/asdatarius-log-alert
+ExecStart=/vagrant/asdatarius-log-alert.sh ${PATH_TO_LOGFILE}
