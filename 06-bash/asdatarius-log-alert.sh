@@ -13,10 +13,15 @@ if ( set -o noclobber; echo "$$" > "$PATH_TO_LOCKFILE") 2> /dev/null; then
 		echo "File \"${PATH_TO_LOGFILE}\" must be readable"
 		exit 1
 	fi
-	
-	SIZE=$(stat --printf="%s" "${PATH_TO_LOGFILE}")
-	PREV_SIZE=$(cat ${PATH_TO_PROGRESS_STORAGE})
 
+	SIZE=$(stat --printf="%s" "${PATH_TO_LOGFILE}")
+
+	if [[ ! -r $PATH_TO_PROGRESS_STORAGE ]]; then
+		PREV_SIZE=0
+	else
+		PREV_SIZE=$(cat ${PATH_TO_PROGRESS_STORAGE})
+	fi
+	
 	if [[ $SIZE -lt $PREV_SIZE ]]; then
 		# log was rotated
 		SIZE=0
