@@ -30,6 +30,9 @@ if ( set -o noclobber; echo "$$" > "$PATH_TO_LOCKFILE") 2> /dev/null; then
 	echo ${SIZE} > ${PATH_TO_PROGRESS_STORAGE}
 
 	((PREV_SIZE++))
+	#skip empty lines with `awk 'NF'`, could affect calculation!
+	START_DT=$(tail -c +${PREV_SIZE} ${PATH_TO_LOGFILE} | head -n1 | awk '{ print $4 $5 }')
+	END_DT=$(tail -n1 ${PATH_TO_LOGFILE} | awk '{ print $4 $5 }')
 	IPs=$(tail -c +${PREV_SIZE} ${PATH_TO_LOGFILE} | awk 'NF' | awk '{ print $1 }' | sort | uniq -c | sort -nr | head -n 10)
 	# there are broken uri (no method/uri/protocol)
 	URIs=$(tail -c +${PREV_SIZE} ${PATH_TO_LOGFILE} | awk 'NF' | awk -F'"' '{ print $2 }' | awk '{ if(length($2) != 0) { print $2 } else print "!!!BINGO BONGO!!!" }' | sort | uniq -c | sort -nr | head -n 10)
@@ -41,7 +44,7 @@ if ( set -o noclobber; echo "$$" > "$PATH_TO_LOCKFILE") 2> /dev/null; then
 	/usr/sbin/sendmail -t 2> /dev/null <<LOGMAIL
 To: ${ALERT_EMAIL}
 From: systemd <root@${HOSTNAME}>
-Subject: asdatarius-log-alert.service
+Subject: asdatarius-log-alert.service ${START_DT} - ${END_DT}
 Content-Transfer-Encoding: 8bit
 Content-Type: text/plain; charset=UTF-8
 
