@@ -17,3 +17,4 @@
 * All action happenes in 06-bash/asdatarius-log-alert.sh
 * Vagrantfile starts with running timer, log-alert linked as sevice to /etc/systemd/system
 * Alerts recepient by default is vagrant@localhost, so mail could be checked by `mail` commaind inside the box
+* Trap could be removed, process should be controlled by systemd
