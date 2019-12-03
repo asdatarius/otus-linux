@@ -1,5 +1,5 @@
-## Packet management
-* Create RPM packet - customize nginx with openssl
+## Package management
+* Create RPM package - customize nginx with openssl
 * Setup own repository and host result RPM from step 1
 
 ### Create custom nginx package
@@ -13,7 +13,7 @@ yum install redhat-lsb-core wget rpmdevtools rpm-build createrepo yum-utils -y
 wget https://nginx.org/packages/centos/7/SRPMS/nginx-1.14.1-1.el7_4.ngx.src.rpm
 ````
 
-* Install procedure will create necessary for build dir structure
+* Install procedure will create necessary required dir structure
 ````
 rpm -i nginx-1.14.1-1.el7_4.ngx.src.rpm
 ````
@@ -24,7 +24,7 @@ wget https://www.openssl.org/source/latest.tar.gz
 tar -xvf latest.tar.gz
 ````
 
-* Build dependicies
+* Build dependencies
 ````
 sudo yum-builddep rpmbuild/SPECS/nginx.spec
 ````
@@ -184,7 +184,7 @@ nginx -s stop
 curl -a http://localhost/repo/
 curl: (7) Failed connect to localhost:80; Connection refused
 
-# remove packeges (nginx config and www root still here)
+# remove packages (nginx config and www root still here)
 yum remove percona-release nginx
 ````
 
