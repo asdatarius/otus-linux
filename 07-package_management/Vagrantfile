@@ -4,7 +4,7 @@
 home = ENV['HOME']
 
 MACHINES = {
-  :"asdatarius-packet-management" => {
+  :"asdatarius-package-management" => {
     :box_name => "asdatarius/centos-7-5",
     # VM CPU count
     :cpus => 4,
