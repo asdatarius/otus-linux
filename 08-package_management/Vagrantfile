@@ -4,7 +4,7 @@
 home = ENV['HOME']
 
 MACHINES = {
-  :"asdatarius-packet-management" => {
+  :"asdatarius-package-management" => {
     :box_name => "asdatarius/centos-7-5",
     # VM CPU count
     :cpus => 4,
@@ -65,7 +65,7 @@ Vagrant.configure("2") do |config|
         end
       end
       box.vm.provision "shell", inline: <<-SHELL
-        yum install redhat-lsb-core wget rpmdevtools rpm-build createrepo yum-utils -y
+        yum install redhat-lsb-core wget rpmdevtools rpm-build createrepo yum-utils docker -y
       SHELL
     end
   end
