@@ -1,0 +1,74 @@
+# -*- mode: ruby -*-
+# vim: set ft=ruby :
+
+home = ENV['HOME']
+
+MACHINES = {
+  :"asdatarius-proc" => {
+    :box_name => "asdatarius/centos-7-5",
+    # VM CPU count
+    :cpus => 4,
+    # VM RAM size (Mb)
+    :memory => 2048,
+    # networks
+    :net => [
+      ip: '192.168.11.101'
+    ],
+    # forwarded ports
+    :forwarded_port => [],
+    # disks
+    :disks => {}
+  }
+}
+
+Vagrant.configure("2") do |config|
+  MACHINES.each do |boxname, boxconfig|
+    config.vm.synced_folder ".", "/vagrant"
+    # Apply VM config
+    config.vm.define boxname do |box|
+      # Set VM base box and hostname
+      box.vm.box = boxconfig[:box_name]
+      box.vm.host_name = boxname.to_s
+      # Additional network config if present
+      if boxconfig.key?(:net)
+        boxconfig[:net].each do |ipconf|
+          box.vm.network "private_network", ipconf
+        end
+      end
+      # Port-forward config if present
+      if boxconfig.key?(:forwarded_port)
+        boxconfig[:forwarded_port].each do |port|
+          box.vm.network "forwarded_port", port
+        end
+      end
+      # VM resources config
+      box.vm.provider "virtualbox" do |v|
+        # Set VM RAM size and CPU count
+        v.memory = boxconfig[:memory]
+        v.cpus = boxconfig[:cpus]
+        # Attach disks if needed
+        if boxconfig.key?(:disks)
+          needsController = false
+          boxconfig[:disks].each do |dname, dconf|
+          	# Create disks
+            unless File.exist?(dconf[:dfile])
+              v.customize ['createhd', '--filename', dconf[:dfile], '--variant', 'Fixed', '--size', dconf[:size]]
+              needsController =  true
+            end
+          end
+
+          if needsController == true
+            v.customize ["storagectl", :id, "--name", "SATA", "--add", "sata" ]
+            # Attach disks
+            boxconfig[:disks].each do |dname, dconf|
+              v.customize ['storageattach', :id,  '--storagectl', 'SATA', '--port', dconf[:port], '--device', 0, '--type', 'hdd', '--medium', dconf[:dfile]]
+            end
+          end
+        end
+      end
+      box.vm.provision "shell", path: "asdatarius_ps_ax.sh"
+      # skip for now
+      #box.vm.provision "shell", path: "asdatarius_lsof.sh"
+    end
+  end
+end

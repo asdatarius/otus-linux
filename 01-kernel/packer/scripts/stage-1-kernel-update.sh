@@ -8,7 +8,7 @@
 #rm -f /boot/*3.10*
 
 # Install dependecies, download kernel sources, config/make/make install
-yum install -y ncurses-devel make gcc bc bison flex elfutils-libelf-devel openssl-devel grub2 wget perl bzip2 tar && cd /usr/src/ && wget https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.3.8.tar.xz && tar -xf linux-5.3.8.tar.xz && cd linux-5.3.8 && cp -v /boot/config-$(uname -r) .config && make olddefconfig && make -j4 && make modules_install && make install
+yum install -y ncurses-devel make gcc bc bison flex elfutils-libelf-devel openssl-devel grub2 wget perl bzip2 tar && cd /usr/src/ && wget https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.5.7.tar.xz && tar -xf linux-5.5.7.tar.xz && cd linux-5.5.7 && cp -v /boot/config-$(uname -r) .config && make olddefconfig && make -j4 && make modules_install && make install
 
 # Update GRUB
 grub2-mkconfig -o /boot/grub2/grub.cfg

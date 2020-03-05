@@ -71,7 +71,8 @@
           "scripts" :
             [
               "scripts/stage-1-kernel-update.sh",
-              "scripts/stage-2-clean.sh"
+              "scripts/stage-2-clean.sh",
+              "scripts/stage-3-purge.sh"
             ]
         }
       }
