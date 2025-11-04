@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  proc:
+    build: .
+    container_name: otus-linux-proc
+    hostname: asdatarius-proc
+    volumes:
+      - ./:/workspace:rw
+    working_dir: /workspace
+    # Keep container running for interactive sessions
+    command: tail -f /dev/null
+    # Allow access to host proc for demonstration
+    pid: host
