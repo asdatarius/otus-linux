@@ -1,0 +1,5 @@
+# Configuration file for log-alert service (Docker version)
+# Place it to /etc/sysconfig
+
+# File to monitor
+PATH_TO_LOGFILE=/workspace/access-4560-644067.log

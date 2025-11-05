@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  bash:
+    build: .
+    container_name: otus-linux-bash
+    hostname: asdatarius-bash
+    privileged: true
+    volumes:
+      - ./:/workspace:rw
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+    working_dir: /workspace
+    command: /usr/sbin/init
+    tmpfs:
+      - /run
+      - /tmp:exec

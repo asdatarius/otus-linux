@@ -1,0 +1,7 @@
+[Unit]
+Description="asdatarius log-alert service"
+
+[Service]
+Type=oneshot
+EnvironmentFile=/workspace/asdatarius-log-alert-docker
+ExecStart=/workspace/asdatarius-log-alert.sh ${PATH_TO_LOGFILE}
