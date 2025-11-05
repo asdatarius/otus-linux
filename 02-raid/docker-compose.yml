@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  raid:
+    build: .
+    container_name: otus-linux-raid
+    hostname: asdatarius-raid
+    privileged: true
+    devices:
+      - /dev/loop-control
+    cap_add:
+      - SYS_ADMIN
+      - MKNOD
+    volumes:
+      - ./:/workspace:rw
+    working_dir: /workspace
+    command: tail -f /dev/null
