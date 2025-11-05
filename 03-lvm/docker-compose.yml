@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  lvm:
+    build: .
+    container_name: otus-linux-lvm
+    hostname: lvm
+    privileged: true
+    devices:
+      - /dev/loop-control
+    cap_add:
+      - SYS_ADMIN
+      - MKNOD
+    volumes:
+      - ./:/workspace:rw
+    working_dir: /workspace
+    command: tail -f /dev/null

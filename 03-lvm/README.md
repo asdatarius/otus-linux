@@ -1,215 +1,241 @@
-# Homework: LVM
+# 03-lvm: Logical Volume Management
 
-Use centos/7 1804.2 vagrant box for:
-1) Reduce / size down to 8G
-2) Add vol for /var, use mirror
-3) Add vol for /home
-4) Restore files from snapshot
-5) Add necessary records to fstab, test different options and file systems
+This homework demonstrates LVM (Logical Volume Manager) operations:
+- Creating physical volumes, volume groups, and logical volumes
+- Mirrored volumes (/var)
+- Snapshots (/home)
+- Resizing volumes
 
-Additional task: Add volume for /opt with btrfs/zfs, use cache and snapshots (in progress)
+## Quick Start (Docker)
 
-## Step by step guide
- ### Reduce / size down to 8G and add vol for /var (with mirror)
-  - xfsdump is required for data backup/restore (move)
+```bash
+# Start container
+docker compose up -d
 
-  ````
-  yum install xfsdump -y
-  ````
+# Setup complete LVM demonstration
+docker compose exec lvm /workspace/setup-lvm.sh
 
-  - Lets create temporary volume:
+# Explore
+docker compose exec lvm bash
+pvs
+vgs
+lvs
+df -h | grep /mnt
+```
 
-  ````
-  pvcreate /dev/sdb
-  vgcreate vg_root /dev/sdb
-  lvcreate -n lv_root -l +100%FREE /dev/vg_root
-  ````
+## What It Does
 
-  - Add file system and mount it (to /mnt). That vol will be used as temporary storage for current /, can't resize volume on the fly.
+The `setup-lvm.sh` script demonstrates:
 
-  ````
-  mkfs.xfs /dev/vg_root/lv_root
-  mount /dev/vg_root/lv_root /mnt
-  ````
+1. **Physical Volumes**: Creates 4 loop devices (10GB, 2GB, 1GB, 1GB)
+2. **Volume Groups**:
+   - `VolGroup00` for root/home/swap
+   - `vg_var` for mirrored /var
+3. **Logical Volumes**:
+   - `LogVol00` (8GB) - root filesystem
+   - `LogVol01` (1.5GB) - swap
+   - `LogVol_Home` (2GB) - home with snapshot demo
+   - `lv_var` (950MB, mirrored) - var with redundancy
+4. **Snapshots**: Demonstrates snapshot creation, file deletion, and restoration
 
-  - Dump/restore
+## LVM Architecture
 
-  ````
-  xfsdump -J - /dev/VolGroup00/LogVol00 | xfsrestore -J - /mnt
-  ````
+```
+Physical Devices (loop devices)
+        ↓
+Physical Volumes (PV)
+        ↓
+Volume Groups (VG)
+        ↓
+Logical Volumes (LV)
+        ↓
+Filesystems (XFS, ext4)
+```
 
-  - Prepare new grub config
+### Created Structure
 
-  ````
-  for i in /proc/ /sys/ /dev/ /run/ /boot/; do mount --bind $i /mnt/$i; done
-  chroot /mnt/
-  grub2-mkconfig -o /boot/grub2/grub.cfg
-  ````
+```
+VolGroup00 (VG on /dev/loop0 - 10GB)
+├── LogVol00 (LV 8GB) → /mnt/root (XFS)
+├── LogVol01 (LV 1.5GB) → swap
+└── LogVol_Home (LV 2GB) → /mnt/home (XFS)
 
-  - Update initrd (+ small patch)
+vg_var (VG on /dev/loop2 + /dev/loop3 - mirrored)
+└── lv_var (LV 950MB, mirrored) → /mnt/var (ext4)
+```
 
-  ````
-  cd /boot ; for i in `ls initramfs-*img`; do dracut -v $i `echo $i|sed "s/initramfs-//g; s/.img//g"` --force; done
-  ````
+## Key LVM Operations
 
- Fix /boot/grub2/grub.cfg - replace `rd.lvm.lv=VolGroup00/LogVol00` to `rd.lvm.lv=vg_root/lv_root`
+### View LVM Structure
 
-  - Exit from chroot and reboot 
+```bash
+# Quick view
+pvs   # Physical volumes
+vgs   # Volume groups
+lvs   # Logical volumes
 
-  ````
-  shutdown -r now
-  ````
+# Detailed view
+pvdisplay
+vgdisplay
+lvdisplay
 
-  - After reboot, delete old 40G LV and create new smaller one (8G).
+# View mirror details
+lvs -a -o +devices vg_var/lv_var
+```
 
-  ````
-  lvremove /dev/VolGroup00/LogVol00
-  lvcreate -n VolGroup00/LogVol00 -L 8G /dev/VolGroup00
-  ````
+### Snapshots
 
-  - Format volume, copy data back (same method)
+```bash
+# Create snapshot
+lvcreate -L 100M -s -n my_snap /dev/VolGroup00/LogVol_Home
 
-  ````
-  mkfs.xfs /dev/VolGroup00/LogVol00
-  mount /dev/VolGroup00/LogVol00 /mnt
-  xfsdump -J - /dev/vg_root/lv_root | xfsrestore -J - /mnt
-  ````
+# View snapshots
+lvs
 
-  - Config grub once again
+# Mount snapshot (read-only)
+mkdir /mnt/snap
+mount -o ro /dev/VolGroup00/my_snap /mnt/snap
 
-  ````
-  for i in /proc/ /sys/ /dev/ /run/ /boot/; do mount --bind $i /mnt/$i; done
-  chroot /mnt/
-  grub2-mkconfig -o /boot/grub2/grub.cfg
-  cd /boot ; for i in `ls initramfs-*img`; do dracut -v $i `echo $i|sed "s/initramfs-//g; s/.img//g"` --force; done
-  ````
+# Restore from snapshot (merge)
+umount /mnt/home
+lvconvert --merge /dev/VolGroup00/my_snap
+# Reactivate and remount
+lvchange -ay /dev/VolGroup00/LogVol_Home
+mount /dev/VolGroup00/LogVol_Home /mnt/home
+```
 
-  - Create mirror on unused disks:
-  ````
-  vcreate /dev/sdc /dev/sdd
-  vgcreate vg_var /dev/sdc /dev/sdd
-  lvcreate -L 950M -m1 -n lv_var vg_var
-  mkfs.ext4 /dev/vg_var/lv_var
-  ````
-  
-  - Format volume, copy data back (same method)
+### Resizing
 
-  ````
-  mkfs.ext4 /dev/vg_var/lv_var
-  mount /dev/vg_var/lv_var /mnt
-  cp -aR /var/* /mnt/ 
-  # or use rsync:
-  # rsync -avHPSAX /var/ /mnt/
-  # backup & clean /var
-  mkdir /tmp/oldvar && mv /var/* /tmp/oldvar
-  ````
-  
-  - Mount new vol to correct point
-  ````
-  umount /mnt
-  mount /dev/vg_var/lv_var /var
-  # Add new /var to fstab for auto maunt (on startup)
-  echo "`blkid | grep var: | awk '{print $2}'` /var ext4 defaults 0 0" >> /etc/fstab
-  ````
+```bash
+# Extend logical volume
+lvextend -L +500M /dev/VolGroup00/LogVol_Home
 
-  - There is no need in config editing, already correct lv for. So just exit from chroot and reboot to new / + /var
+# Grow filesystem (XFS)
+xfs_growfs /mnt/home
 
-  ````
-  shutdown -r now
-  ````
+# Or for ext4:
+# resize2fs /dev/VolGroup00/LogVol_Home
+```
 
- - Remove temporary lv/vg/pv
+### Mirroring
 
-  ````
-  lvremove /dev/vg_root/lv_root
-  vgremove /dev/vg_root
-  pvremove /dev/sdb
-  ````
+```bash
+# View mirror status
+lvs -a -o +devices vg_var/lv_var
 
-  ### Add volume for /home
-  - Create volume
+# The output shows:
+# lv_var          vg_var  ...
+#   lv_var_rimage_0  ...  /dev/loop2(0)
+#   lv_var_rimage_1  ...  /dev/loop3(0)
+#   lv_var_rmeta_0   ...  /dev/loop2(0)
+#   lv_var_rmeta_1   ...  /dev/loop3(0)
+```
 
-  ````
-  lvcreate -n LogVol_Home -L 2G /dev/VolGroup00
-  ````
+## Manual Setup
 
-  - Format
+See `README_VAGRANT.md` for detailed step-by-step instructions for each operation.
 
-  ````
-  mkfs.xfs /dev/VolGroup00/LogVol_Home
-  ````
+## Testing
 
-  - Mount
+```bash
+# Write data
+echo "test data" > /mnt/home/testfile
+cat /mnt/home/testfile
 
-  ````
-  mount /dev/VolGroup00/LogVol_Home /mnt/
-  cp -aR /home/* /mnt/ 
-  # or back it up?
-  rm -rf /home/*
-  umount /mnt
-  mount /dev/VolGroup00/LogVol_Home /home/
-  ````
+# Create and test snapshot
+lvcreate -L 100M -s -n test_snap /dev/VolGroup00/LogVol_Home
+rm /mnt/home/testfile
+# File is deleted
 
-  - Add new /home to fstab (mount on startup)
+# Restore
+umount /mnt/home
+lvconvert --merge /dev/VolGroup00/test_snap
+lvchange -ay /dev/VolGroup00/LogVol_Home
+mount /dev/VolGroup00/LogVol_Home /mnt/home
+cat /mnt/home/testfile
+# File is back!
 
-  ````
-  echo "`blkid | grep Home | awk '{print $2}'` /home xfs defaults 0 0" >> /etc/fstab
-  ````
+# Test mirror by viewing both copies
+lvs -a -o +devices vg_var/lv_var
+```
 
- ### Restore files from snapshot
+## Common Commands
 
- - Let's create number of files in new /home
+```bash
+# Create PV
+pvcreate /dev/sdX
 
- ````
- touch /home/file{1..20}
- ````
+# Create VG
+vgcreate my_vg /dev/sdX /dev/sdY
 
- - Create snapshot
+# Create LV
+lvcreate -n my_lv -L 10G my_vg
 
- ````
- lvcreate -L 100MB -s -n home_snap /dev/VolGroup00/LogVol_Home
- ````
+# Create mirrored LV
+lvcreate -L 1G -m1 -n my_mirror my_vg
 
- - Remove subset of files
- 
- ````
- rm -f /home/file{11..20}
- ````
+# Create snapshot
+lvcreate -L 100M -s -n my_snap /dev/my_vg/my_lv
 
- - Restore them from snapshot
+# Extend LV
+lvextend -L +5G /dev/my_vg/my_lv
 
- ````
- umount /home
- lvconvert --merge /dev/VolGroup00/home_snap
- mount /home
- ````
- 
- ### Final result
- 
- ````
- $ vagrant ssh
- Last login: Tue Nov 19 05:47:46 2019 from 10.0.2.2
- [vagrant@lvm ~]$ lsblk
- NAME MAJ:MIN RM SIZE RO TYPE MOUNTPOINT
- sda 8:0 0 40G 0 disk
- ├─sda1 8:1 0 1M 0 part
- ├─sda2 8:2 0 1G 0 part /boot
- └─sda3 8:3 0 39G 0 part
- ├─VolGroup00-LogVol00 253:0 0 8G 0 lvm /
- ├─VolGroup00-LogVol01 253:1 0 1.5G 0 lvm [SWAP]
- └─VolGroup00-LogVol_Home 253:2 0 2G 0 lvm /home
- sdb 8:16 0 10G 0 disk
- sdc 8:32 0 2G 0 disk
- ├─vg_var-lv_var_rmeta_0 253:3 0 4M 0 lvm
- │ └─vg_var-lv_var 253:7 0 952M 0 lvm /var
- └─vg_var-lv_var_rimage_0 253:4 0 952M 0 lvm
- └─vg_var-lv_var 253:7 0 952M 0 lvm /var
- sdd 8:48 0 1G 0 disk
- ├─vg_var-lv_var_rmeta_1 253:5 0 4M 0 lvm
- │ └─vg_var-lv_var 253:7 0 952M 0 lvm /var
- └─vg_var-lv_var_rimage_1 253:6 0 952M 0 lvm
- └─vg_var-lv_var 253:7 0 952M 0 lvm /var
- sde 8:64 0 1G 0 disk
- ````
+# Remove LV
+lvremove /dev/my_vg/my_lv
 
+# Remove VG
+vgremove my_vg
 
+# Remove PV
+pvremove /dev/sdX
+```
+
+## Troubleshooting
+
+```bash
+# Activate volume
+lvchange -ay /dev/VolGroup00/LogVol_Home
+
+# Deactivate volume
+lvchange -an /dev/VolGroup00/LogVol_Home
+
+# Scan for volume groups
+vgscan
+
+# Repair filesystem
+xfs_repair /dev/VolGroup00/LogVol_Home
+
+# Check space
+vgs  # VG free space
+lvs  # LV usage
+df -h  # Filesystem usage
+```
+
+## Cleanup
+
+```bash
+# Unmount
+umount /mnt/*
+
+# Remove LVs
+lvremove /dev/VolGroup00/LogVol00
+lvremove /dev/VolGroup00/LogVol01
+lvremove /dev/VolGroup00/LogVol_Home
+lvremove /dev/vg_var/lv_var
+
+# Remove VGs
+vgremove VolGroup00
+vgremove vg_var
+
+# Remove PVs
+pvremove /dev/loop*
+
+# Detach loop devices
+losetup -D
+```
+
+## References
+
+- [LVM HOWTO](https://tldp.org/HOWTO/LVM-HOWTO/)
+- [Red Hat LVM Guide](https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/9/html/configuring_and_managing_logical_volumes/)
+- [lvm(8) man page](https://linux.die.net/man/8/lvm)
