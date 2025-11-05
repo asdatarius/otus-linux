@@ -1,303 +1,105 @@
-## systemd
-### Log monitoring service (with timer and variables).
+# 07-systemd: Service Management
 
-- Create config `/etc/sysconfig/asdatarius-watchlog`
+This homework demonstrates three systemd concepts:
+1. Log monitoring service with timer (similar to 04-bash)
+2. Converting init scripts to systemd units (spawn-fcgi)
+3. Using systemd templates for multi-instance services (httpd)
 
-````bash
-# Configuration file for my watchdog service
-# Place it to /etc/sysconfig
+## Quick Start (Docker)
 
-# File and word in that file that we will be monit
-WORD="ALERT"
-LOG_FILE="/var/log/asdatarius-watchlog.log"
-````
+```bash
+# Start container with systemd
+docker compose up -d
 
-- Create logfile `/var/log/asdatarius-watchlog.log`
+# Run complete setup for all three exercises
+docker compose exec systemd /workspace/setup-all.sh
 
-````
-Some shitty log with AL3rTZ.
-Every line could be complete fail.
-Disaster.
-alert!
-````
+# Test results
+docker compose exec systemd journalctl -u asdatarius-watch.service -f
+docker compose exec systemd systemctl status spawn-fcgi
+docker compose exec systemd systemctl status httpd@first
+curl http://localhost:8081
+curl http://localhost:8082
+```
 
-- Create monitoring script `/opt/asdatarius-watchlog.sh` (chmod u+x) with basic validation
+## What's Included
 
-````bash
-#!/bin/bash
-WORD=$1
-LOG_FILE=$2
-DATE=`date`
+### Exercise 1: Log Monitoring (Timer + Service)
+- Watches `/var/log/asdatarius-watchlog.log` for "ALERT" keyword
+- Runs every 30 seconds via systemd timer
+- Logs to syslog when match found
 
-function usage {
-    echo "usage: sh $0 STR_TO_FIND FULL_PATH_TO_LOG"
-    exit 1
-}
+### Exercise 2: spawn-fcgi Service
+- Converts legacy init script to systemd unit
+- Manages PHP FastCGI processes
+- Type=simple with PID file
 
-if [ -f "$LOG_FILE" ]; then
-    if [ -z "$WORD" ]; then
-        echo "Can't search for an empty substring."
-	usage
-    else
-        if grep -i $WORD $LOG_FILE &> /dev/null
-	then
-            logger "$DATE: bingo bongo!"
-        fi
-        exit 0
-    fi
-else
-    echo "The file '$LOG_FILE' does not exist."
-    usage
-fi
-````
+### Exercise 3: httpd Template (@)
+- Single service template: `httpd@.service`
+- Multiple instances: `httpd@first`, `httpd@second`
+- Different ports: 8081, 8082
+- Separate configs and PID files
 
-- Create service `/etc/systemd/system/asdatarius-watch.service`
+## Manual Setup (Step by Step)
 
-````bash
-[Unit]
-Description="asdatarius watchlog service"
+See `README_VAGRANT.md` for detailed manual instructions for each exercise.
 
-[Service]
-Type=oneshot
-EnvironmentFile=/etc/sysconfig/asdatarius-watchlog
-ExecStart=/opt/asdatarius-watchlog.sh $WORD $LOG_FILE
-````
+## Testing
 
-- Test run
+```bash
+# Exercise 1: Watch log monitoring
+docker compose exec systemd journalctl -u asdatarius-watch.service -f
+docker compose exec systemd systemctl list-timers
 
-````
-systemctl start asdatarius-watch.service; tail -n3 /var/log/messages
-Nov 22 00:07:23 localhost systemd: Starting "asdatarius watchlog service"...
-Nov 22 00:07:23 localhost root: Fri Nov 22 00:07:23 UTC 2019: bingo bongo!
-Nov 22 00:07:23 localhost systemd: Started "asdatarius watchlog service".
-````
+# Exercise 2: Check spawn-fcgi
+docker compose exec systemd systemctl status spawn-fcgi
+docker compose exec systemd ps aux | grep php-cgi
 
-- Create timer `/etc/systemd/system/asdatarius-watch.timer`
+# Exercise 3: Test httpd instances
+curl http://localhost:8081
+curl http://localhost:8082
+docker compose exec systemd systemctl status 'httpd@*'
+```
 
-````bash
-[Unit]
-Description="Run watchlog script every 30 second"
-# Without it timer won't start by himself and waits for manual service run
-Requires=asdatarius-watch.service
+## Key systemd Concepts
 
+**Timer Units**: Schedule service execution
+```ini
 [Timer]
-# Run every 30 second
 OnUnitActiveSec=30s
-# Default accuracy - up to 1m
-AccuracySec=1s
-# Could be omitted if unit with same name (except suffix).
-#Unit=asdatarius-watch.service
+```
 
-[Install]
-WantedBy=multi-user.target
-````	
-
-- Timer just works
-
-````bash
-systemctl start asdatarius-watch.timer
-````
-
-- Final test
-
-````bash
-# I've used 5+1s accuracy for tests.
-[root@asdatarius-systemd system]# tail -n10 /var/log/messages
-Nov 22 00:00:15 localhost systemd: Started "asdatarius watchlog service".
-Nov 22 00:00:21 localhost systemd: Starting "asdatarius watchlog service"...
-Nov 22 00:00:21 localhost root: Fri Nov 22 00:00:21 UTC 2019: bingo bongo!
-Nov 22 00:00:21 localhost systemd: Started "asdatarius watchlog service".
-Nov 22 00:00:27 localhost systemd: Starting "asdatarius watchlog service"...
-Nov 22 00:00:27 localhost root: Fri Nov 22 00:00:27 UTC 2019: bingo bongo!
-Nov 22 00:00:27 localhost systemd: Started "asdatarius watchlog service".
-Nov 22 00:00:33 localhost systemd: Starting "asdatarius watchlog service"...
-Nov 22 00:00:33 localhost root: Fri Nov 22 00:00:33 UTC 2019: bingo bongo!
-Nov 22 00:00:33 localhost systemd: Started "asdatarius watchlog service".
-````
-
-### Convert init file for spawn-fcgi to unit file
-
-- Install spawn-fcgi and dependicies
-
-````bash
-yum install epel-release -y && yum install spawn-fcgi php php-cli mod_fcgid httpd -y
-````
-
-- Source config could be found here: `/etc/rc.d/init.d/spawn-fcgi`
-
-- Prepare vars at `/etc/sysconfig/spawn-fcgi` (exists)
-
-````bash
-SOCKET=/var/run/php-fcgi.sock
-OPTIONS="-u apache -g apache -s $SOCKET -S -M 0600 -C 32 -F 1 -- /usr/bin/php-cgi"
-````
-
-- Create unit file `/etc/systemd/system/spawn-fcgi.service`
-
-````bash
-[Unit]
-Description=Spawn-fcgi startup service by Otus
-After=network.target
-
+**Environment Files**: External configuration
+```ini
 [Service]
-Type=simple
-PIDFile=/var/run/spawn-fcgi.pid
-EnvironmentFile=/etc/sysconfig/spawn-fcgi
-ExecStart=/usr/bin/spawn-fcgi -n $OPTIONS
-KillMode=process
+EnvironmentFile=/etc/sysconfig/myservice
+```
 
-[Install]
-WantedBy=multi-user.target
-````
-
-- Final test
-````bash
-systemctl start spawn-fcgi
-systemctl status spawn-fcgi
-● spawn-fcgi.service - Spawn-fcgi startup service
-   Loaded: loaded (/etc/systemd/system/spawn-fcgi.service; disabled; vendor preset: disabled)
-   Active: active (running) since Fri 2019-11-22 01:11:09 UTC; 2s ago
- Main PID: 19427 (php-cgi)
-   CGroup: /system.slice/spawn-fcgi.service
-           ├─19427 /usr/bin/php-cgi
-           ├─19428 /usr/bin/php-cgi
-           ├─19429 /usr/bin/php-cgi
-           ├─19430 /usr/bin/php-cgi
-           ├─19431 /usr/bin/php-cgi
-           ├─19432 /usr/bin/php-cgi
-           ├─19433 /usr/bin/php-cgi
-           ├─19434 /usr/bin/php-cgi
-           ├─19435 /usr/bin/php-cgi
-           ├─19436 /usr/bin/php-cgi
-           ├─19437 /usr/bin/php-cgi
-           ├─19438 /usr/bin/php-cgi
-           ├─19439 /usr/bin/php-cgi
-           ├─19440 /usr/bin/php-cgi
-           ├─19441 /usr/bin/php-cgi
-           ├─19442 /usr/bin/php-cgi
-           ├─19443 /usr/bin/php-cgi
-           ├─19444 /usr/bin/php-cgi
-           ├─19445 /usr/bin/php-cgi
-           ├─19446 /usr/bin/php-cgi
-           ├─19447 /usr/bin/php-cgi
-           ├─19448 /usr/bin/php-cgi
-           ├─19449 /usr/bin/php-cgi
-           ├─19450 /usr/bin/php-cgi
-           ├─19451 /usr/bin/php-cgi
-           ├─19452 /usr/bin/php-cgi
-           ├─19453 /usr/bin/php-cgi
-           ├─19454 /usr/bin/php-cgi
-           ├─19455 /usr/bin/php-cgi
-           ├─19456 /usr/bin/php-cgi
-           ├─19457 /usr/bin/php-cgi
-           ├─19458 /usr/bin/php-cgi
-           └─19459 /usr/bin/php-cgi
-````
-
-### Templates for httpd unit
-Prepare unit for multiconfig httpd setup.
-
-- Copy base unit
-
-````bash
-cp /usr/lib/systemd/system/httpd.service /etc/systemd/system/httpd@.service
-````
-
-- Prepare unit file (add tpl var)
-
-````bash
-[Unit]
-Description=The Apache HTTP Server
-After=network.target remote-fs.target nss-lookup.target
-Documentation=man:httpd(8)
-Documentation=man:apachectl(8)
-
+**Template Units**: Single unit, multiple instances
+```ini
+# httpd@.service
 [Service]
-Type=notify
-# Configs with name httd-%I, control valid names!
-EnvironmentFile=/etc/sysconfig/httpd-%I 
-ExecStart=/usr/sbin/httpd $OPTIONS -DFOREGROUND
-ExecReload=/usr/sbin/httpd $OPTIONS -k graceful
-ExecStop=/bin/kill -WINCH ${MAINPID}
-KillSignal=SIGCONT
-PrivateTmp=true
+EnvironmentFile=/etc/sysconfig/httpd-%i
+```
 
-[Install]
-WantedBy=multi-user.target
-````
+## Troubleshooting
 
-- Add settings files for 2 example instances `/etc/sysconfig/httpd-first` and `/etc/sysconfig/httpd-second` (custom configs with different ports/pids)
+```bash
+# View all services
+docker compose exec systemd systemctl list-units --type=service
 
-````bash
-# /etc/sysconfig/httpd-first
-OPTIONS=-f conf/first.conf
+# Check specific service
+docker compose exec systemd systemctl status SERVICE_NAME
 
-# /etc/sysconfig/httpd-second
-OPTIONS=-f conf/second.conf
-````
+# View logs
+docker compose exec systemd journalctl -u SERVICE_NAME
 
-- Config could be copied from original `/etc/httpd/conf/httpd.conf`, important part - pid and port:
-````bash
-# /etc/httpd/conf/httpd-first.conf
-...
-Listen 8081
-PidFile /var/run/httpd-first.pid
-...
+# Reload after changes
+docker compose exec systemd systemctl daemon-reload
+```
 
-# /etc/httpd/conf/httpd-second.conf
-...
-Listen 8082
-PidFile /var/run/httpd-second.pid
-...
-````
+## References
 
-- Final test
-
-````
-systemctl start httpd@first
-systemctl status httpd@first
-● httpd@first.service - The Apache HTTP Server with custom configs
-   Loaded: loaded (/etc/systemd/system/httpd@.service; disabled; vendor preset: disabled)
-   Active: active (running) since Fri 2019-11-22 01:22:07 UTC; 9s ago
-     Docs: man:httpd(8)
-           man:apachectl(8)
- Main PID: 19491 (httpd)
-   Status: "Total requests: 0; Current requests/sec: 0; Current traffic:   0 B/sec"
-   CGroup: /system.slice/system-httpd.slice/httpd@first.service
-           ├─19491 /usr/sbin/httpd -f conf/first.conf -DFOREGROUND
-           ├─19492 /usr/sbin/httpd -f conf/first.conf -DFOREGROUND
-           ├─19493 /usr/sbin/httpd -f conf/first.conf -DFOREGROUND
-           ├─19494 /usr/sbin/httpd -f conf/first.conf -DFOREGROUND
-           ├─19495 /usr/sbin/httpd -f conf/first.conf -DFOREGROUND
-           ├─19496 /usr/sbin/httpd -f conf/first.conf -DFOREGROUND
-           └─19497 /usr/sbin/httpd -f conf/first.conf -DFOREGROUND
-
-Nov 22 01:22:07 asdatarius-systemd systemd[1]: Starting The Apache HTTP Server with custom configs...
-Nov 22 01:22:07 asdatarius-systemd httpd[19491]: AH00558: httpd: Could not reliably determine the server's fully qualified domain name, using 127.0.0.1. Set the 'ServerName' directive global... this message
-Nov 22 01:22:07 asdatarius-systemd systemd[1]: Started The Apache HTTP Server with custom configs.
-Hint: Some lines were ellipsized, use -l to show in full.
-
-
-systemctl start httpd@second
-systemctl status httpd@second
-● httpd@second.service - The Apache HTTP Server with custom configs
-   Loaded: loaded (/etc/systemd/system/httpd@.service; disabled; vendor preset: disabled)
-   Active: active (running) since Fri 2019-11-22 01:22:38 UTC; 2s ago
-     Docs: man:httpd(8)
-           man:apachectl(8)
- Main PID: 19507 (httpd)
-   Status: "Processing requests..."
-   CGroup: /system.slice/system-httpd.slice/httpd@second.service
-           ├─19507 /usr/sbin/httpd -f conf/second.conf -DFOREGROUND
-           ├─19508 /usr/sbin/httpd -f conf/second.conf -DFOREGROUND
-           ├─19509 /usr/sbin/httpd -f conf/second.conf -DFOREGROUND
-           ├─19510 /usr/sbin/httpd -f conf/second.conf -DFOREGROUND
-           ├─19511 /usr/sbin/httpd -f conf/second.conf -DFOREGROUND
-           ├─19512 /usr/sbin/httpd -f conf/second.conf -DFOREGROUND
-           └─19513 /usr/sbin/httpd -f conf/second.conf -DFOREGROUND
-
-Nov 22 01:22:38 asdatarius-systemd systemd[1]: Starting The Apache HTTP Server with custom configs...
-Nov 22 01:22:38 asdatarius-systemd httpd[19507]: AH00558: httpd: Could not reliably determine the server's fully qualified domain name, using 127.0.0.1. Set the 'ServerName' directive global... this message
-Nov 22 01:22:38 asdatarius-systemd systemd[1]: Started The Apache HTTP Server with custom configs.
-Hint: Some lines were ellipsized, use -l to show in full.
-````
+- See `README_VAGRANT.md` for complete original documentation
+- systemd documentation: https://www.freedesktop.org/software/systemd/man/
+- Manual PDFs in `manual/` directory

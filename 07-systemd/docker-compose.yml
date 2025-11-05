@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  systemd:
+    build: .
+    container_name: otus-linux-systemd
+    hostname: asdatarius-systemd
+    privileged: true
+    volumes:
+      - ./:/workspace:rw
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+    working_dir: /workspace
+    ports:
+      - "8081:8081"  # httpd-first
+      - "8082:8082"  # httpd-second
+    command: /usr/sbin/init
+    tmpfs:
+      - /run
+      - /tmp:exec
