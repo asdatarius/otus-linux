@@ -1,215 +1,330 @@
-## Package management
-* Create RPM package - customize nginx with openssl
-* Setup own repository and host result RPM from step 1
+# 08-package_management: RPM Building and Custom Repository
 
-### Create custom nginx package
-* Install required tools
-````
-yum install redhat-lsb-core wget rpmdevtools rpm-build createrepo yum-utils -y
-````
+This homework demonstrates how to:
+1. Build custom RPM packages (nginx with custom OpenSSL)
+2. Create and manage a YUM/DNF repository
+3. Host packages via HTTP/nginx
 
-* Download nginx SRPM
-````
-wget https://nginx.org/packages/centos/7/SRPMS/nginx-1.14.1-1.el7_4.ngx.src.rpm
-````
+## Learning Objectives
 
-* Install procedure will create necessary required dir structure
-````
-rpm -i nginx-1.14.1-1.el7_4.ngx.src.rpm
-````
+- Understand RPM package structure and build process
+- Learn to customize SRPM (Source RPM) packages
+- Create repository metadata with `createrepo`
+- Host and serve RPM repositories
+- Configure YUM/DNF to use custom repositories
 
-* Get openssl
-````
-wget https://www.openssl.org/source/latest.tar.gz
-tar -xvf latest.tar.gz
-````
+## Prerequisites
 
-* Build dependencies
-````
-sudo yum-builddep rpmbuild/SPECS/nginx.spec
-````
+### Option 1: Docker (Recommended for 2025+)
+- Docker Desktop 4.0+ (macOS/Windows) or Docker Engine 20.10+ (Linux)
+- Docker Compose v2+
+- **Works on**: macOS (Intel/ARM), Linux, Windows with WSL2
 
-* Look into available build options for [nginx](https://nginx.org/ru/docs/configure.html)
+### Option 2: Vagrant (Legacy)
+- VirtualBox 6.1+
+- Vagrant 2.2+
+- ⚠️ **Limited support on Apple Silicon Macs**
 
-* Update spec file `rpmbuild/SPECS/nginx.spec` with openssl. Path to downloaded latest openssl sources is /home/vagrant/openssl-1.1.1d. Beware, subject to change.
-````
-...
-%build
-./configure %{BASE_CONFIGURE_ARGS} \
-    --with-cc-opt="%{WITH_CC_OPT}" \
-    --with-ld-opt="%{WITH_LD_OPT}" \
-    --with-debug \
-    --with-openssl=/home/vagrant/openssl-1.1.1d
-make %{?_smp_mflags}
-%{__mv} %{bdir}/objs/nginx \
-    %{bdir}/objs/nginx-debug
-./configure %{BASE_CONFIGURE_ARGS} \
-    --with-cc-opt="%{WITH_CC_OPT}" \
-    --with-ld-opt="%{WITH_LD_OPT}" \
-    --with-openssl=/home/vagrant/openssl-1.1.1d
-make %{?_smp_mflags}
-...
-````
+## Quick Start (Docker)
 
-* Build new package (with srmps)
-````
-rpmbuild -bb rpmbuild/SPECS/nginx.spec
-...
-Executing(%clean): /bin/sh -e /var/tmp/rpm-tmp.V3P11d
-+ umask 022
-+ cd /home/vagrant/rpmbuild/BUILD
-+ cd nginx-1.14.1
-+ /usr/bin/rm -rf /home/vagrant/rpmbuild/BUILDROOT/nginx-1.14.1-1.el7_4.ngx.x86_64
-+ exit 0
-````
+### Automated Build (Recommended)
 
-* Check results
-````
-ll rpmbuild/RPMS/x86_64/
-total 6048
--rw-rw-r-- 1 vagrant vagrant 3637480 Dec  3 05:27 nginx-1.14.1-1.el7_4.ngx.x86_64.rpm
--rw-rw-r-- 1 vagrant vagrant 2548600 Dec  3 05:27 nginx-debuginfo-1.14.1-1.el7_4.ngx.x86_64.rpm
-````
+```bash
+# Start the build environment
+docker compose up -d builder
 
-* Install it (as root)
-````
-yum localinstall rpmbuild/RPMS/x86_64/nginx-1.14.1-1.el7_4.ngx.x86_64.rpm -y
-...
-systemctl start nginx
-systemctl status nginx
-● nginx.service - nginx - high performance web server
-   Loaded: loaded (/usr/lib/systemd/system/nginx.service; disabled; vendor preset: disabled)
-   Active: active (running) since Tue 2019-12-03 05:32:11 UTC; 5s ago
-     Docs: http://nginx.org/en/docs/
-  Process: 11499 ExecStart=/usr/sbin/nginx -c /etc/nginx/nginx.conf (code=exited, status=0/SUCCESS)
- Main PID: 11500 (nginx)
-   CGroup: /system.slice/nginx.service
-           ├─11500 nginx: master process /usr/sbin/nginx -c /etc/nginx/nginx.conf
-           └─11501 nginx: worker process
+# Run the automated build script
+docker compose exec builder bash /workspace/build-nginx-rpm.sh
 
-Dec 03 05:32:11 asdatarius-packet-management systemd[1]: Starting nginx - high performance web server...
-Dec 03 05:32:11 asdatarius-packet-management systemd[1]: Started nginx - high performance web server.
-````
+# Start the repository server
+docker compose up -d repo-server
 
-### Setup own repository
-* Prepare dir for repo with packages
-````
+# Access the repository
+open http://localhost:8080/repo/
+# or: curl http://localhost:8080/repo/
+```
+
+### Manual Build Process
+
+```bash
+# Start build environment
+docker compose up -d builder
+docker compose exec builder bash
+
+# Inside the container:
+cd ~
+
+# 1. Download nginx SRPM
+wget https://nginx.org/packages/centos/9/SRPMS/nginx-1.24.0-1.el9.ngx.src.rpm
+rpm -i nginx-1.24.0-1.el9.ngx.src.rpm
+
+# 2. Download OpenSSL
+wget https://www.openssl.org/source/openssl-3.0.13.tar.gz
+tar -xzf openssl-3.0.13.tar.gz
+
+# 3. Install build dependencies
+yum-builddep -y ~/rpmbuild/SPECS/nginx.spec
+
+# 4. Modify nginx.spec to use custom OpenSSL
+vi ~/rpmbuild/SPECS/nginx.spec
+# Add: --with-openssl=/root/openssl-3.0.13 \
+# to the ./configure line
+
+# 5. Build the RPM
+cd ~/rpmbuild/SPECS
+rpmbuild -bb nginx.spec
+
+# 6. Check results
+ls -lh ~/rpmbuild/RPMS/x86_64/
+
+# 7. Copy to repository
 mkdir -p /var/www/repo
-cp rpmbuild/RPMS/x86_64/nginx-1.14.1-1.el7_4.ngx.x86_64.rpm /var/www/repo/
-# + additional packages which could be used in our own repo
-wget http://www.percona.com/downloads/percona-release/redhat/0.1-6/percona-release-0.1-6.noarch.rpm -O /var/www/repo/percona-release-0.1-6.noarch.rpm
-````
+cp ~/rpmbuild/RPMS/x86_64/nginx-*.rpm /var/www/repo/
 
-* Init repo
-````
+# 8. Add additional packages (optional)
+wget http://www.percona.com/downloads/percona-release/redhat/0.1-6/percona-release-0.1-6.noarch.rpm \
+    -O /var/www/repo/percona-release-0.1-6.noarch.rpm
+
+# 9. Create repository metadata
 createrepo /var/www/repo/
-Spawning worker 0 with 1 pkgs
-Spawning worker 1 with 1 pkgs
-Spawning worker 2 with 0 pkgs
-Spawning worker 3 with 0 pkgs
-Workers Finished
-Saving Primary metadata
-Saving file lists metadata
-Saving other metadata
-Generating sqlite DBs
-Sqlite DBs complete
-````
 
-* Update nginx config (/etc/nginx/conf.d/default.conf), root location
-````
-...
-    location / {
-        root   /var/www;
-        index  index.html index.htm;
-        autoindex on;
-    }
-...
-````
+# 10. Exit and start nginx server
+exit
+docker compose up -d repo-server
+```
 
-* Test config and reload nginx
-````
-nginx -t
-nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
-nginx: configuration file /etc/nginx/nginx.conf test is successful
+### Verify Repository
 
-nginx -s reload
+```bash
+# Browse the repository
+curl http://localhost:8080/repo/
 
-curl -a http://localhost/repo/
-<html>
-<head><title>Index of /repo/</title></head>
-<body bgcolor="white">
-<h1>Index of /repo/</h1><hr><pre><a href="../">../</a>
-<a href="repodata/">repodata/</a>                                          03-Dec-2019 05:39                   -
-<a href="nginx-1.14.1-1.el7_4.ngx.x86_64.rpm">nginx-1.14.1-1.el7_4.ngx.x86_64.rpm</a>                03-Dec-2019 05:38             3637480
-<a href="percona-release-0.1-6.noarch.rpm">percona-release-0.1-6.noarch.rpm</a>                   13-Jun-2018 06:34               14520
-</pre><hr></body>
-</html>
-````
+# Should show:
+# - nginx-1.24.0-1.el9.ngx.x86_64.rpm
+# - percona-release-0.1-6.noarch.rpm
+# - repodata/ directory
+```
 
-* Add repo to `/etc/yum.repos.d`
-````
-cat >> /etc/yum.repos.d/asdatarius.repo << EOF
-[asdatarius]
-name=asdatarius
-baseurl=http://localhost/repo
+### Test Installation
+
+```bash
+# Start a test Rocky Linux container
+docker run -it --rm rockylinux:9 bash
+
+# Inside the test container:
+# Add the custom repository
+cat > /etc/yum.repos.d/custom.repo <<EOF
+[custom]
+name=Custom Repository
+baseurl=http://host.docker.internal:8080/repo
 gpgcheck=0
 enabled=1
 EOF
 
-# check result
-yum repolist enabled | grep asdatarius
-asdatarius                          asdatarius
+# Check repository is available
+yum repolist
 
-# nginx installed from local rpm, so missed from the list
-yum list | grep asdatarius
-percona-release.noarch                      0.1-6                      asdatarius
-````
+# Install a package from custom repo
+yum install -y percona-release
 
-* Test install
-````
-yum install percona-release -y
-````
+# Verify
+rpm -qa | grep percona
+```
 
-### Use nginx from docker
-* Install docker
-````
-yum install docker -y
-systemctl start docker
-````
+## Architecture
 
-* Clean up
-````
-nginx -s stop
-# check
-curl -a http://localhost/repo/
-curl: (7) Failed connect to localhost:80; Connection refused
+The Docker setup consists of two services:
 
-# remove packages (nginx config and www root still here)
-yum remove percona-release nginx
-````
+### 1. Builder Service
+- **Image**: Rocky Linux 9 with RPM build tools
+- **Purpose**: Build custom RPM packages
+- **Volumes**:
+  - `./:/workspace` - Your homework directory
+  - `rpmbuild:/root/rpmbuild` - RPM build directory (persistent)
+  - `repo:/var/www/repo` - Shared repository storage
 
-* Run nginx with local config and custom www root
-````
-# mount /var/www and /etc/nginx
-docker run --name nginx -v /var/www:/var/www -v /etc/nginx:/etc/nginx -p 80:80 -d nginx
+### 2. Repo-Server Service
+- **Image**: nginx:alpine
+- **Purpose**: Serve the RPM repository over HTTP
+- **Port**: 8080 → 80
+- **Volume**: `repo:/usr/share/nginx/html/repo` - Repository files
 
-#check
-curl -a http://localhost/repo/
-<html>
-<head><title>Index of /repo/</title></head>
-<body>
-<h1>Index of /repo/</h1><hr><pre><a href="../">../</a>
-<a href="repodata/">repodata/</a>                                          03-Dec-2019 05:54                   -
-<a href="nginx-1.14.1-1.el7_4.ngx.x86_64.rpm">nginx-1.14.1-1.el7_4.ngx.x86_64.rpm</a>                03-Dec-2019 05:38             3637480
-<a href="percona-release-0.1-6.noarch.rpm">percona-release-0.1-6.noarch.rpm</a>                   13-Jun-2018 06:34               14520
-</pre><hr></body>
-</html>
+### Persistent Volumes
 
-# check if repo still ok
-yum list | grep asdatarius
-nginx.x86_64                                1:1.14.1-1.el7_4.ngx       asdatarius
-percona-release.noarch                      0.1-6                      asdatarius
+- **`otus-rpmbuild`**: Stores rpmbuild directory (so you don't rebuild from scratch)
+- **`otus-repo`**: Stores repository files (shared between builder and nginx)
 
-# install percona-release once more time
-yum install percona-release -y
-````
+## Understanding RPM Building
+
+### RPM Build Directory Structure
+
+```
+~/rpmbuild/
+├── BUILD/       # Temporary build files
+├── BUILDROOT/   # Install root for packaging
+├── RPMS/        # Built binary RPMs
+│   └── x86_64/  # Architecture-specific RPMs
+├── SOURCES/     # Source tarballs and patches
+├── SPECS/       # RPM spec files
+└── SRPMS/       # Source RPMs
+```
+
+### The .spec File
+
+The spec file defines how to build the RPM:
+
+```spec
+%build
+./configure %{BASE_CONFIGURE_ARGS} \
+    --with-openssl=/root/openssl-3.0.13 \   # Custom OpenSSL
+    --with-cc-opt="%{WITH_CC_OPT}" \
+    --with-ld-opt="%{WITH_LD_OPT}"
+make %{?_smp_mflags}
+```
+
+Key sections:
+- **`%prep`**: Prepare source code
+- **`%build`**: Compile the software
+- **`%install`**: Install to BUILDROOT
+- **`%files`**: List files to include in RPM
+- **`%changelog`**: Package changelog
+
+### Repository Metadata
+
+```bash
+createrepo /var/www/repo/
+```
+
+This creates:
+- `repodata/repomd.xml` - Repository metadata index
+- `repodata/primary.xml.gz` - Package list
+- `repodata/filelists.xml.gz` - File lists
+- `repodata/other.xml.gz` - Additional metadata
+
+## Advanced Topics
+
+### Custom RPM Macros
+
+Create `~/.rpmmacros`:
+```
+%_topdir /root/rpmbuild
+%_tmppath /root/rpmbuild/tmp
+```
+
+### Signing RPMs
+
+```bash
+# Generate GPG key
+gpg --gen-key
+
+# Sign RPM
+rpm --addsign /var/www/repo/nginx-*.rpm
+
+# Export public key
+gpg --export -a 'Your Name' > /var/www/repo/RPM-GPG-KEY
+```
+
+### Multi-Architecture Support
+
+```bash
+# Build for different architectures
+rpmbuild --target=x86_64 -bb nginx.spec
+rpmbuild --target=aarch64 -bb nginx.spec
+```
+
+## Troubleshooting
+
+### Build Fails with Missing Dependencies
+
+```bash
+# Install missing build dependencies
+yum-builddep -y ~/rpmbuild/SPECS/nginx.spec
+
+# Or manually install specific packages
+yum install -y gcc make zlib-devel pcre-devel
+```
+
+### OpenSSL Build Fails
+
+```bash
+# Check OpenSSL version compatibility
+cd ~/openssl-3.0.13
+./config --help
+
+# Test OpenSSL build separately
+./config
+make
+make test
+```
+
+### Repository Not Accessible
+
+```bash
+# Check nginx is running
+docker compose ps
+
+# Check nginx logs
+docker compose logs repo-server
+
+# Test locally
+docker compose exec repo-server wget -O- http://localhost/repo/
+```
+
+### YUM Can't Find Packages
+
+```bash
+# Clean YUM cache
+yum clean all
+
+# Regenerate cache
+yum makecache
+
+# Check repository is enabled
+yum repolist enabled
+```
+
+## Cleanup
+
+```bash
+# Stop all services
+docker compose down
+
+# Remove volumes (careful - deletes built RPMs!)
+docker compose down -v
+
+# Remove specific volume
+docker volume rm otus-rpmbuild
+docker volume rm otus-repo
+```
+
+## Performance Comparison
+
+| Environment | Build Time | Setup Time | RAM Usage |
+|-------------|-----------|------------|-----------|
+| Docker      | ~5-10 min | 2-5s       | 1-2GB     |
+| Vagrant     | ~5-10 min | 30-60s     | 2-4GB     |
+
+*Build time is similar (actual compilation), but Docker has much faster startup*
+
+## Next Steps
+
+After completing this homework:
+1. Try building other RPM packages (httpd, php, etc.)
+2. Set up GPG signing for your packages
+3. Create a multi-architecture repository
+4. Implement automatic repository updates with CI/CD
+5. Explore COPR (Cool Other Package Repo) for public hosting
+
+## References
+
+- [RPM Packaging Guide](https://rpm-packaging-guide.github.io/)
+- [Fedora RPM Guide](https://docs.fedoraproject.org/en-US/package-maintainers/Packaging_Tutorial_GNU_Hello/)
+- [nginx Configuration Reference](https://nginx.org/en/docs/configure.html)
+- [createrepo Documentation](https://linux.die.net/man/8/createrepo)
+- [OpenSSL Downloads](https://www.openssl.org/source/)
+
+---
+
+## Legacy Vagrant Instructions
+
+See the original README.md in the repository for Vagrant-based instructions. The process is similar but runs in a full VM instead of containers.
